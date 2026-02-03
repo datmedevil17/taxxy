@@ -135,10 +135,14 @@ func (s *TripServer) UpdateTripStatus(ctx context.Context, req *trippb.UpdateTri
 		}
 
 		// ── Publish completed → triggers payment ────────────
+		driverID := ""
+		if trip.DriverID != nil {
+			driverID = *trip.DriverID
+		}
 		s.mq.Publish(messaging.EventRideCompleted, map[string]interface{}{
 			"trip_id":    req.TripId,
 			"rider_id":   trip.RiderID,
-			"driver_id":  trip.DriverID,
+			"driver_id":  driverID,
 			"final_fare": finalFare,
 			"timestamp":  time.Now().UTC().Format(time.RFC3339),
 		})
@@ -212,10 +216,14 @@ func (s *TripServer) ListTrips(ctx context.Context, req *trippb.ListTripsRequest
 // ─── helpers ─────────────────────────────────────────────────
 
 func tripToProto(t *models.Trip) *trippb.TripDetails {
+	driverID := ""
+	if t.DriverID != nil {
+		driverID = *t.DriverID
+	}
 	return &trippb.TripDetails{
 		TripId:        t.ID,
 		RiderId:       t.RiderID,
-		DriverId:      t.DriverID,
+		DriverId:      driverID,
 		Pickup:        &sharedpb.Location{Latitude: t.PickupLat, Longitude: t.PickupLng},
 		Dropoff:       &sharedpb.Location{Latitude: t.DropoffLat, Longitude: t.DropoffLng},
 		VehicleType:   t.VehicleType,

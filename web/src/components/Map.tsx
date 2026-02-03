@@ -52,14 +52,6 @@ export default function Map({ className, pickup, dropoff, onMapClick }: MapProps
           <Polyline positions={[pickup, dropoff]} color="black" dashArray="5, 10" />
         )}
       </MapContainer>
-      
-      {/* Search Bar Overlay Mock */}
-      <div className="absolute top-4 left-4 right-4 z-[1000] max-w-md mx-auto">
-         <div className="bg-white/90 backdrop-blur border shadow-sm rounded-full px-6 py-3 text-sm text-zinc-500 flex items-center gap-2">
-            <div className="h-2 w-2 bg-black rounded-full" />
-            <span>Search destination...</span>
-         </div>
-      </div>
     </div>
   )
 }

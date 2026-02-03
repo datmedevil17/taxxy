@@ -1,43 +1,28 @@
-import { create } from 'zustand'
+import { create } from 'zustand';
 
-export type RideStatus = 'IDLE' | 'REQUESTING' | 'WAITING' | 'ACCEPTED' | 'COMPLETED'
-export type VehicleType = 'sedan' | 'suv' | 'van' | 'luxury'
+// Simple store for global UI state
+// All API data is handled in page components with local state
 
-interface Trip {
-  id: string
-  pickup: { lat: number; lng: number } | null
-  dropoff: { lat: number; lng: number } | null
-  vehicle: VehicleType
-  price: number
-  distance: string
-  time: string
+interface AppState {
+  // Global loading state
+  globalLoading: boolean;
+  setGlobalLoading: (loading: boolean) => void;
+  
+  // Toast/notification state
+  notification: { message: string; type: 'success' | 'error' | 'info' } | null;
+  showNotification: (message: string, type: 'success' | 'error' | 'info') => void;
+  clearNotification: () => void;
 }
 
-interface TaxxyState {
-  // Rider State
-  status: RideStatus
-  currentTrip: Trip | null
+export const useStore = create<AppState>((set) => ({
+  globalLoading: false,
+  setGlobalLoading: (loading) => set({ globalLoading: loading }),
   
-  // Actions
-  requestRide: (trip: Trip) => void
-  acceptRide: () => void
-  resetRide: () => void
-  setPickup: (lat: number, lng: number) => void
-  setDropoff: (lat: number, lng: number) => void
-}
+  notification: null,
+  showNotification: (message, type) => set({ notification: { message, type } }),
+  clearNotification: () => set({ notification: null }),
+}));
 
-export const useStore = create<TaxxyState>((set) => ({
-  status: 'IDLE',
-  currentTrip: null,
-
-  requestRide: (trip) => set({ status: 'WAITING', currentTrip: trip }),
-  acceptRide: () => set({ status: 'ACCEPTED' }), // Driver accepts
-  resetRide: () => set({ status: 'IDLE', currentTrip: null }),
-  
-  setPickup: (lat, lng) => set((state) => ({ 
-    currentTrip: { ...state.currentTrip, pickup: { lat, lng } } as Trip 
-  })),
-  setDropoff: (lat, lng) => set((state) => ({ 
-    currentTrip: { ...state.currentTrip, dropoff: { lat, lng } } as Trip 
-  })),
-}))
+// Re-export types for backward compatibility
+export type VehicleType = 'sedan' | 'suv' | 'van' | 'luxury';
+export type RideStatus = 'idle' | 'requesting' | 'waiting' | 'accepted' | 'in_progress' | 'completed';

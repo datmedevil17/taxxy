@@ -14,6 +14,13 @@ help:
 	@echo "  make frontend   - Run the frontend development server"
 	@echo "  make install    - Install frontend dependencies"
 	@echo "  make clean      - Clean up artifacts and temporary files"
+	@echo ""
+	@echo "Database access:"
+	@echo "  make db-auth    - Connect to Auth database"
+	@echo "  make db-rider   - Connect to Rider database"
+	@echo "  make db-trip    - Connect to Trip database"
+	@echo "  make db-driver  - Connect to Driver database"
+	@echo "  make db-payment - Connect to Payment database"
 
 # ─── Proto ────────────────────────────────────────────────────────────
 proto:
@@ -62,3 +69,19 @@ clean:
 	@echo "Cleaning up..."
 	@rm -rf bin
 	@rm -rf web/dist
+
+# ─── Database Access ──────────────────────────────────────────────────
+db-auth:
+	@docker exec -it taxxy-postgres-auth-1 psql -U taxxy_auth -d taxxy_auth
+
+db-rider:
+	@docker exec -it taxxy-postgres-rider-1 psql -U taxxy_rider -d taxxy_rider
+
+db-trip:
+	@docker exec -it taxxy-postgres-trip-1 psql -U taxxy_trip -d taxxy_trip
+
+db-driver:
+	@docker exec -it taxxy-postgres-driver-1 psql -U taxxy_driver -d taxxy_driver
+
+db-payment:
+	@docker exec -it taxxy-postgres-payment-1 psql -U taxxy_payment -d taxxy_payment

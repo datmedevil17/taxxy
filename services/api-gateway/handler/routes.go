@@ -329,6 +329,33 @@ func (g *Gateway) CompleteRide(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"trip_id": resp.TripId, "status": resp.Status, "fare": resp.Fare})
 }
 
+// POST /api/driver/start-ride
+func (g *Gateway) StartRide(c *gin.Context) {
+	var body struct {
+		TripID string `json:"trip_id" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	conn := g.dial(g.Cfg.TripServiceURL, c)
+	if conn == nil {
+		return
+	}
+	defer conn.Close()
+
+	resp, err := trippb.NewTripServiceClient(conn).UpdateTripStatus(c.Request.Context(), &trippb.UpdateTripStatusRequest{
+		TripId: body.TripID,
+		Status: "in_progress",
+	})
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"trip_id": resp.TripId, "status": resp.Status})
+}
+
 // ════════════════════════════════════════════════════════════
 //  TRIP ENDPOINTS
 // ════════════════════════════════════════════════════════════

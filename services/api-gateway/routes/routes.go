@@ -33,6 +33,7 @@ func Register(r *gin.Engine, cfg config.Config) {
 		auth.GET("/driver/profile", gw.GetDriverProfile)
 		auth.PUT("/driver/availability", gw.UpdateDriverAvailability)
 		auth.POST("/driver/accept-ride", gw.AcceptRide)
+		auth.POST("/driver/start-ride", gw.StartRide)
 		auth.POST("/driver/complete-ride", gw.CompleteRide)
 
 		// Trip

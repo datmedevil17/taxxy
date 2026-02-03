@@ -25,7 +25,7 @@ const (
 type Trip struct {
 	ID            string         `gorm:"primaryKey;type:uuid"       json:"id"`
 	RiderID       string         `gorm:"not null;index;type:uuid"   json:"rider_id"`
-	DriverID      string         `gorm:"index;type:uuid"            json:"driver_id"`   // empty until accepted
+	DriverID      *string        `gorm:"index;type:uuid"            json:"driver_id"` // NULL until accepted
 	PickupLat     float64        `gorm:"not null"                   json:"pickup_lat"`
 	PickupLng     float64        `gorm:"not null"                   json:"pickup_lng"`
 	DropoffLat    float64        `gorm:"not null"                   json:"dropoff_lat"`
