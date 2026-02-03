@@ -1,5 +1,5 @@
 # ─── Stage 1: Build ──────────────────────────────────────────
-FROM golang:1.22-alpine AS builder
+FROM golang:1.23-alpine AS builder
 
 # Install git (needed for some Go module fetches)
 RUN apk add --no-cache git
@@ -16,6 +16,7 @@ COPY services/auth-service/        ./services/auth-service/
 
 # Download dependencies
 WORKDIR /app/services/auth-service
+ENV GOTOOLCHAIN=auto
 RUN go mod download
 
 # Build the binary

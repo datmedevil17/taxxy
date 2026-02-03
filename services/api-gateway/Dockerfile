@@ -1,9 +1,10 @@
-FROM golang:1.22-alpine AS builder
+FROM golang:1.23-alpine AS builder
 RUN apk add --no-cache git
 WORKDIR /app
 COPY shared/               ./shared/
 COPY services/api-gateway/ ./services/api-gateway/
 WORKDIR /app/services/api-gateway
+ENV GOTOOLCHAIN=auto
 RUN go mod download && go build -o /api-gateway .
 
 FROM alpine:3.19

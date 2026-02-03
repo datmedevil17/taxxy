@@ -1,9 +1,10 @@
-FROM golang:1.22-alpine AS builder
+FROM golang:1.23-alpine AS builder
 RUN apk add --no-cache git
 WORKDIR /app
 COPY shared/              ./shared/
 COPY services/driver-service/ ./services/driver-service/
 WORKDIR /app/services/driver-service
+ENV GOTOOLCHAIN=auto
 RUN go mod download && go build -o /driver-service .
 
 FROM alpine:3.19
