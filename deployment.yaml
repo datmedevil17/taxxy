@@ -1,0 +1,555 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-gateway
+  namespace: taxxy
+spec:
+  replicas: 3    # more replicas than backend services – it's the entry point
+  selector:
+    matchLabels: { app: api-gateway }
+  template:
+    metadata:
+      labels: { app: api-gateway }
+    spec:
+      containers:
+        - name: api-gateway
+          image: taxxy/api-gateway:latest
+          ports: [{ containerPort: 8080, name: http }]
+          env:
+            - { name: HTTP_PORT,              value: "8080" }
+            - { name: AUTH_SERVICE_URL,       value: auth-service:50051 }
+            - { name: RIDER_SERVICE_URL,      value: rider-service:50052 }
+            - { name: TRIP_SERVICE_URL,       value: trip-service:50053 }
+            - { name: DRIVER_SERVICE_URL,     value: driver-service:50054 }
+            - { name: PAYMENT_SERVICE_URL,    value: payment-service:50055 }
+          # Liveness & readiness probes use the /health endpoint
+          livenessProbe:
+            httpGet: { path: /health, port: http }
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet: { path: /health, port: http }
+            initialDelaySeconds: 3
+            periodSeconds: 5
+
+---
+# ─── ClusterIP Service ───────────────────────────────────────
+apiVersion: v1
+kind: Service
+metadata:
+  name: api-gateway
+  namespace: taxxy
+spec:
+  selector: { app: api-gateway }
+  ports: [{ port: 80, targetPort: http }]
+
+---
+# ─── Ingress (nginx) ─────────────────────────────────────────
+# Assumes an ingress-nginx controller is installed in the cluster.
+# For local minikube: minikube addons enable ingress
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: taxxy-ingress
+  namespace: taxxy
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: taxxy.local            # add to /etc/hosts → minikube ip
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: api-gateway
+                port: { number: 80 }
+
+# ─── RabbitMQ ─────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rabbitmq
+  namespace: taxxy
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: rabbitmq }
+  template:
+    metadata:
+      labels: { app: rabbitmq }
+    spec:
+      containers:
+        - name: rabbitmq
+          image: rabbitmq:3-management-alpine
+          ports:
+            - { containerPort: 5672, name: amqp }
+            - { containerPort: 15672, name: mgmt }
+          env:
+            - { name: RABBITMQ_DEFAULT_USER, value: guest }
+            - { name: RABBITMQ_DEFAULT_PASS, value: guest }
+          volumeMounts:
+            - { name: rabbitmq-data, mountPath: /var/lib/rabbitmq }
+      volumes:
+        - name: rabbitmq-data
+          emptyDir: {}   # Use a PVC in production
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rabbitmq
+  namespace: taxxy
+spec:
+  selector: { app: rabbitmq }
+  ports:
+    - { name: amqp, port: 5672, targetPort: amqp }
+    - { name: mgmt,  port: 15672, targetPort: mgmt }
+
+# ─── Postgres Helper Template ─────────────────────────────────
+# Each Postgres instance follows the same pattern.
+# We use StatefulSet + PVC for durable storage.
+
+---
+# ── Auth DB ──────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres-auth
+  namespace: taxxy
+spec:
+  serviceName: postgres-auth
+  replicas: 1
+  selector:
+    matchLabels: { app: postgres-auth }
+  template:
+    metadata:
+      labels: { app: postgres-auth }
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          ports: [{ containerPort: 5432 }]
+          env:
+            - { name: POSTGRES_USER,     value: taxxy_auth }
+            - { name: POSTGRES_PASSWORD, value: password }
+            - { name: POSTGRES_DB,       value: taxxy_auth }
+          volumeMounts:
+            - { name: pgdata, mountPath: /var/lib/postgresql/data }
+  volumeClaimTemplates:
+    - metadata: { name: pgdata }
+      spec:
+        accessModes: [ReadWriteOnce]
+        resources:
+          requests: { storage: 2Gi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-auth
+  namespace: taxxy
+spec:
+  clusterIP: None  # headless – required for StatefulSet DNS
+  selector: { app: postgres-auth }
+  ports: [{ port: 5432 }]
+
+---
+# ── Rider DB ─────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres-rider
+  namespace: taxxy
+spec:
+  serviceName: postgres-rider
+  replicas: 1
+  selector:
+    matchLabels: { app: postgres-rider }
+  template:
+    metadata:
+      labels: { app: postgres-rider }
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          ports: [{ containerPort: 5432 }]
+          env:
+            - { name: POSTGRES_USER,     value: taxxy_rider }
+            - { name: POSTGRES_PASSWORD, value: password }
+            - { name: POSTGRES_DB,       value: taxxy_rider }
+          volumeMounts:
+            - { name: pgdata, mountPath: /var/lib/postgresql/data }
+  volumeClaimTemplates:
+    - metadata: { name: pgdata }
+      spec:
+        accessModes: [ReadWriteOnce]
+        resources:
+          requests: { storage: 2Gi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-rider
+  namespace: taxxy
+spec:
+  clusterIP: None
+  selector: { app: postgres-rider }
+  ports: [{ port: 5432 }]
+
+---
+# ── Trip DB ──────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres-trip
+  namespace: taxxy
+spec:
+  serviceName: postgres-trip
+  replicas: 1
+  selector:
+    matchLabels: { app: postgres-trip }
+  template:
+    metadata:
+      labels: { app: postgres-trip }
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          ports: [{ containerPort: 5432 }]
+          env:
+            - { name: POSTGRES_USER,     value: taxxy_trip }
+            - { name: POSTGRES_PASSWORD, value: password }
+            - { name: POSTGRES_DB,       value: taxxy_trip }
+          volumeMounts:
+            - { name: pgdata, mountPath: /var/lib/postgresql/data }
+  volumeClaimTemplates:
+    - metadata: { name: pgdata }
+      spec:
+        accessModes: [ReadWriteOnce]
+        resources:
+          requests: { storage: 2Gi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-trip
+  namespace: taxxy
+spec:
+  clusterIP: None
+  selector: { app: postgres-trip }
+  ports: [{ port: 5432 }]
+
+---
+# ── Driver DB ────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres-driver
+  namespace: taxxy
+spec:
+  serviceName: postgres-driver
+  replicas: 1
+  selector:
+    matchLabels: { app: postgres-driver }
+  template:
+    metadata:
+      labels: { app: postgres-driver }
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          ports: [{ containerPort: 5432 }]
+          env:
+            - { name: POSTGRES_USER,     value: taxxy_driver }
+            - { name: POSTGRES_PASSWORD, value: password }
+            - { name: POSTGRES_DB,       value: taxxy_driver }
+          volumeMounts:
+            - { name: pgdata, mountPath: /var/lib/postgresql/data }
+  volumeClaimTemplates:
+    - metadata: { name: pgdata }
+      spec:
+        accessModes: [ReadWriteOnce]
+        resources:
+          requests: { storage: 2Gi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-driver
+  namespace: taxxy
+spec:
+  clusterIP: None
+  selector: { app: postgres-driver }
+  ports: [{ port: 5432 }]
+
+---
+# ── Payment DB ───────────────────────────────────────────────
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres-payment
+  namespace: taxxy
+spec:
+  serviceName: postgres-payment
+  replicas: 1
+  selector:
+    matchLabels: { app: postgres-payment }
+  template:
+    metadata:
+      labels: { app: postgres-payment }
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          ports: [{ containerPort: 5432 }]
+          env:
+            - { name: POSTGRES_USER,     value: taxxy_payment }
+            - { name: POSTGRES_PASSWORD, value: password }
+            - { name: POSTGRES_DB,       value: taxxy_payment }
+          volumeMounts:
+            - { name: pgdata, mountPath: /var/lib/postgresql/data }
+  volumeClaimTemplates:
+    - metadata: { name: pgdata }
+      spec:
+        accessModes: [ReadWriteOnce]
+        resources:
+          requests: { storage: 2Gi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-payment
+  namespace: taxxy
+spec:
+  clusterIP: None
+  selector: { app: postgres-payment }
+  ports: [{ port: 5432 }]
+
+# ─── Namespace ────────────────────────────────────────────────
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: taxxy
+
+# ═══════════════════════════════════════════════════════════════
+#  AUTH SERVICE
+# ═══════════════════════════════════════════════════════════════
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: auth-service
+  namespace: taxxy
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: auth-service }
+  template:
+    metadata:
+      labels: { app: auth-service }
+    spec:
+      containers:
+        - name: auth-service
+          image: taxxy/auth-service:latest   # replace with your registry
+          ports: [{ containerPort: 50051, name: grpc }]
+          env:
+            - { name: GRPC_PORT,        value: "50051" }
+            - { name: DB_HOST,          value: postgres-auth }
+            - { name: DB_PORT,          value: "5432" }
+            - { name: DB_USER,          value: taxxy_auth }
+            - { name: DB_PASSWORD,      valueFrom: { secretKeyRef: { name: taxxy-secrets, key: auth-db-password } } }
+            - { name: DB_NAME,          value: taxxy_auth }
+            - { name: DB_SSLMODE,       value: disable }
+            - { name: JWT_SECRET,       valueFrom: { secretKeyRef: { name: taxxy-secrets, key: jwt-secret } } }
+            - { name: JWT_EXPIRY_HOURS, value: "24" }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: auth-service
+  namespace: taxxy
+spec:
+  selector: { app: auth-service }
+  ports: [{ port: 50051, targetPort: grpc }]
+
+# ═══════════════════════════════════════════════════════════════
+#  RIDER SERVICE
+# ═══════════════════════════════════════════════════════════════
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rider-service
+  namespace: taxxy
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: rider-service }
+  template:
+    metadata:
+      labels: { app: rider-service }
+    spec:
+      containers:
+        - name: rider-service
+          image: taxxy/rider-service:latest
+          ports: [{ containerPort: 50052, name: grpc }]
+          env:
+            - { name: GRPC_PORT,        value: "50052" }
+            - { name: DB_HOST,          value: postgres-rider }
+            - { name: DB_PORT,          value: "5432" }
+            - { name: DB_USER,          value: taxxy_rider }
+            - { name: DB_PASSWORD,      valueFrom: { secretKeyRef: { name: taxxy-secrets, key: rider-db-password } } }
+            - { name: DB_NAME,          value: taxxy_rider }
+            - { name: DB_SSLMODE,       value: disable }
+            - { name: TRIP_SERVICE_URL, value: trip-service:50053 }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rider-service
+  namespace: taxxy
+spec:
+  selector: { app: rider-service }
+  ports: [{ port: 50052, targetPort: grpc }]
+
+# ═══════════════════════════════════════════════════════════════
+#  TRIP SERVICE
+# ═══════════════════════════════════════════════════════════════
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: trip-service
+  namespace: taxxy
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: trip-service }
+  template:
+    metadata:
+      labels: { app: trip-service }
+    spec:
+      containers:
+        - name: trip-service
+          image: taxxy/trip-service:latest
+          ports: [{ containerPort: 50053, name: grpc }]
+          env:
+            - { name: GRPC_PORT,    value: "50053" }
+            - { name: DB_HOST,      value: postgres-trip }
+            - { name: DB_PORT,      value: "5432" }
+            - { name: DB_USER,      value: taxxy_trip }
+            - { name: DB_PASSWORD,  valueFrom: { secretKeyRef: { name: taxxy-secrets, key: trip-db-password } } }
+            - { name: DB_NAME,      value: taxxy_trip }
+            - { name: DB_SSLMODE,   value: disable }
+            - { name: RABBITMQ_URL, value: amqp://guest:guest@rabbitmq:5672/ }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: trip-service
+  namespace: taxxy
+spec:
+  selector: { app: trip-service }
+  ports: [{ port: 50053, targetPort: grpc }]
+
+# ═══════════════════════════════════════════════════════════════
+#  DRIVER SERVICE
+# ═══════════════════════════════════════════════════════════════
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: driver-service
+  namespace: taxxy
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: driver-service }
+  template:
+    metadata:
+      labels: { app: driver-service }
+    spec:
+      containers:
+        - name: driver-service
+          image: taxxy/driver-service:latest
+          ports: [{ containerPort: 50054, name: grpc }]
+          env:
+            - { name: GRPC_PORT,          value: "50054" }
+            - { name: DB_HOST,            value: postgres-driver }
+            - { name: DB_PORT,            value: "5432" }
+            - { name: DB_USER,            value: taxxy_driver }
+            - { name: DB_PASSWORD,        valueFrom: { secretKeyRef: { name: taxxy-secrets, key: driver-db-password } } }
+            - { name: DB_NAME,            value: taxxy_driver }
+            - { name: DB_SSLMODE,         value: disable }
+            - { name: RABBITMQ_URL,       value: amqp://guest:guest@rabbitmq:5672/ }
+            - { name: TRIP_SERVICE_URL,   value: trip-service:50053 }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: driver-service
+  namespace: taxxy
+spec:
+  selector: { app: driver-service }
+  ports: [{ port: 50054, targetPort: grpc }]
+
+# ═══════════════════════════════════════════════════════════════
+#  PAYMENT SERVICE
+# ═══════════════════════════════════════════════════════════════
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: payment-service
+  namespace: taxxy
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: payment-service }
+  template:
+    metadata:
+      labels: { app: payment-service }
+    spec:
+      containers:
+        - name: payment-service
+          image: taxxy/payment-service:latest
+          ports: [{ containerPort: 50055, name: grpc }]
+          env:
+            - { name: GRPC_PORT,    value: "50055" }
+            - { name: DB_HOST,      value: postgres-payment }
+            - { name: DB_PORT,      value: "5432" }
+            - { name: DB_USER,      value: taxxy_payment }
+            - { name: DB_PASSWORD,  valueFrom: { secretKeyRef: { name: taxxy-secrets, key: payment-db-password } } }
+            - { name: DB_NAME,      value: taxxy_payment }
+            - { name: DB_SSLMODE,   value: disable }
+            - { name: RABBITMQ_URL, value: amqp://guest:guest@rabbitmq:5672/ }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: payment-service
+  namespace: taxxy
+spec:
+  selector: { app: payment-service }
+  ports: [{ port: 50055, targetPort: grpc }]
+
+# ═══════════════════════════════════════════════════════════════
+#  SECRETS (replace values with base64-encoded real secrets)
+# ═══════════════════════════════════════════════════════════════
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: taxxy-secrets
+  namespace: taxxy
+type: Opaque
+data:
+  # echo -n "password" | base64  →  cGFzc3dvcmQ=
+  auth-db-password:    cGFzc3dvcmQ=
+  rider-db-password:   cGFzc3dvcmQ=
+  trip-db-password:    cGFzc3dvcmQ=
+  driver-db-password:  cGFzc3dvcmQ=
+  payment-db-password: cGFzc3dvcmQ=
+  # echo -n "taxxy-prod-jwt-secret-rotate-me" | base64
+  jwt-secret:          dGF4eHktcHJvZC1qd3Qtc2VjcmV0LXJvdGF0ZS1tZQ==

@@ -1,0 +1,71 @@
+syntax = "proto3";
+
+package rider;
+
+option go_package = "github.com/taxxy/shared/proto/rider";
+
+import "proto/shared/shared.proto";
+
+service RiderService {
+  rpc CreateProfile(CreateRiderProfileRequest)
+      returns (CreateRiderProfileResponse);
+  rpc GetProfile(GetRiderProfileRequest) returns (RiderProfile);
+  rpc RequestRide(RequestRideRequest) returns (RequestRideResponse);
+  rpc GetMyTrips(GetRiderTripsRequest) returns (GetRiderTripsResponse);
+}
+
+message CreateRiderProfileRequest {
+  string user_id = 1;
+  string name = 2;
+  string phone = 3;
+  string payment_method = 4;
+}
+
+message CreateRiderProfileResponse {
+  string rider_id = 1;
+  string status = 2;
+}
+
+message GetRiderProfileRequest { string user_id = 1; }
+
+message RiderProfile {
+  string rider_id = 1;
+  string user_id = 2;
+  string name = 3;
+  string phone = 4;
+  string payment_method = 5;
+  int32 total_rides = 6;
+  double average_rating = 7;
+}
+
+message RequestRideRequest {
+  string user_id = 1;
+  shared.Location pickup = 2;
+  shared.Location dropoff = 3;
+  string vehicle_type = 4;
+}
+
+message RequestRideResponse {
+  string trip_id = 1;
+  string status = 2;
+  double estimated_fare = 3;
+  string eta = 4;
+}
+
+message GetRiderTripsRequest {
+  string user_id = 1;
+  int32 limit = 2;
+  int32 offset = 3;
+}
+
+message GetRiderTripsResponse {
+  repeated RiderTripSummary trips = 1;
+  int32 total = 2;
+}
+
+message RiderTripSummary {
+  string trip_id = 1;
+  string status = 2;
+  double fare = 3;
+  string created_at = 4;
+}

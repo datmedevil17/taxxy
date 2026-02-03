@@ -1,0 +1,69 @@
+# ─── API Gateway Deployment ─────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-gateway
+  namespace: taxxy
+spec:
+  replicas: 3    # more replicas than backend services – it's the entry point
+  selector:
+    matchLabels: { app: api-gateway }
+  template:
+    metadata:
+      labels: { app: api-gateway }
+    spec:
+      containers:
+        - name: api-gateway
+          image: taxxy/api-gateway:latest
+          ports: [{ containerPort: 8080, name: http }]
+          env:
+            - { name: HTTP_PORT,              value: "8080" }
+            - { name: AUTH_SERVICE_URL,       value: auth-service:50051 }
+            - { name: RIDER_SERVICE_URL,      value: rider-service:50052 }
+            - { name: TRIP_SERVICE_URL,       value: trip-service:50053 }
+            - { name: DRIVER_SERVICE_URL,     value: driver-service:50054 }
+            - { name: PAYMENT_SERVICE_URL,    value: payment-service:50055 }
+          # Liveness & readiness probes use the /health endpoint
+          livenessProbe:
+            httpGet: { path: /health, port: http }
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet: { path: /health, port: http }
+            initialDelaySeconds: 3
+            periodSeconds: 5
+
+---
+# ─── ClusterIP Service ───────────────────────────────────────
+apiVersion: v1
+kind: Service
+metadata:
+  name: api-gateway
+  namespace: taxxy
+spec:
+  selector: { app: api-gateway }
+  ports: [{ port: 80, targetPort: http }]
+
+---
+# ─── Ingress (nginx) ─────────────────────────────────────────
+# Assumes an ingress-nginx controller is installed in the cluster.
+# For local minikube: minikube addons enable ingress
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: taxxy-ingress
+  namespace: taxxy
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: taxxy.local            # add to /etc/hosts → minikube ip
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: api-gateway
+                port: { number: 80 }

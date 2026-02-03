@@ -1,0 +1,83 @@
+syntax = "proto3";
+
+package payment;
+
+option go_package = "github.com/taxxy/shared/proto/payment";
+
+service PaymentService {
+  rpc CalculateFare(CalculateFareRequest) returns (CalculateFareResponse);
+  rpc ProcessPayment(ProcessPaymentRequest) returns (ProcessPaymentResponse);
+  rpc GetPayment(GetPaymentRequest) returns (PaymentDetails);
+  rpc Refund(RefundRequest) returns (RefundResponse);
+  rpc GetDriverEarnings(GetDriverEarningsRequest) returns (DriverEarnings);
+}
+
+message CalculateFareRequest {
+  double pickup_lat = 1;
+  double pickup_lng = 2;
+  double dropoff_lat = 3;
+  double dropoff_lng = 4;
+  string vehicle_type = 5;
+}
+
+message CalculateFareResponse {
+  double base_fare = 1;
+  double distance_km = 2;
+  double duration_min = 3;
+  double surge_multiplier = 4;
+  double total_fare = 5;
+  string breakdown = 6;
+}
+
+message ProcessPaymentRequest {
+  string trip_id = 1;
+  string rider_id = 2;
+  double amount = 3;
+  string payment_method = 4;
+}
+
+message ProcessPaymentResponse {
+  string payment_id = 1;
+  string status = 2;
+  double amount = 3;
+}
+
+message GetPaymentRequest { string payment_id = 1; }
+
+message PaymentDetails {
+  string payment_id = 1;
+  string trip_id = 2;
+  string rider_id = 3;
+  double amount = 4;
+  string payment_method = 5;
+  string status = 6;
+  string created_at = 7;
+  string updated_at = 8;
+}
+
+message RefundRequest {
+  string payment_id = 1;
+  double amount = 2;
+  string reason = 3;
+}
+
+message RefundResponse {
+  string refund_id = 1;
+  string status = 2;
+  double amount = 3;
+}
+
+message GetDriverEarningsRequest {
+  string driver_id = 1;
+  string from_date = 2;
+  string to_date = 3;
+}
+
+message DriverEarnings {
+  string driver_id = 1;
+  double total_earned = 2;
+  int32 total_trips = 3;
+  double average_per_trip = 4;
+  string period_from = 5;
+  string period_to = 6;
+}

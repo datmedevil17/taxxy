@@ -1,0 +1,11 @@
+go 1.25.4
+
+use (
+	./services/api-gateway
+	./services/auth-service
+	./services/driver-service
+	./services/payment-service
+	./services/rider-service
+	./services/trip-service
+	./shared
+)

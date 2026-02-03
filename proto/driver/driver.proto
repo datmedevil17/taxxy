@@ -1,0 +1,96 @@
+syntax = "proto3";
+
+package driver;
+
+option go_package = "github.com/taxxy/shared/proto/driver";
+
+import "proto/shared/shared.proto";
+
+service DriverService {
+  rpc CreateProfile(CreateDriverProfileRequest)
+      returns (CreateDriverProfileResponse);
+  rpc GetProfile(GetDriverProfileRequest) returns (DriverProfile);
+  rpc UpdateAvailability(UpdateAvailabilityRequest)
+      returns (UpdateAvailabilityResponse);
+  rpc AcceptRide(AcceptRideRequest) returns (AcceptRideResponse);
+  rpc CompleteRide(CompleteRideRequest) returns (CompleteRideResponse);
+  rpc GetMyTrips(GetDriverTripsRequest) returns (GetDriverTripsResponse);
+}
+
+message CreateDriverProfileRequest {
+  string user_id = 1;
+  string name = 2;
+  string phone = 3;
+  string vehicle_type = 4;
+  string vehicle_plate = 5;
+  string vehicle_brand = 6;
+}
+
+message CreateDriverProfileResponse {
+  string driver_id = 1;
+  string status = 2;
+}
+
+message GetDriverProfileRequest { string user_id = 1; }
+
+message DriverProfile {
+  string driver_id = 1;
+  string user_id = 2;
+  string name = 3;
+  string phone = 4;
+  string vehicle_type = 5;
+  string vehicle_plate = 6;
+  string vehicle_brand = 7;
+  string status = 8; // available, busy, offline
+  double average_rating = 9;
+  double current_lat = 10;
+  double current_lng = 11;
+  int32 total_trips = 12;
+}
+
+message UpdateAvailabilityRequest {
+  string user_id = 1;
+  string status = 2;
+  shared.Location location = 3;
+}
+
+message UpdateAvailabilityResponse { string status = 1; }
+
+message AcceptRideRequest {
+  string user_id = 1;
+  string trip_id = 2;
+}
+
+message AcceptRideResponse {
+  string trip_id = 1;
+  string status = 2;
+}
+
+message CompleteRideRequest {
+  string user_id = 1;
+  string trip_id = 2;
+}
+
+message CompleteRideResponse {
+  string trip_id = 1;
+  string status = 2;
+  double fare = 3;
+}
+
+message GetDriverTripsRequest {
+  string user_id = 1;
+  int32 limit = 2;
+  int32 offset = 3;
+}
+
+message GetDriverTripsResponse {
+  repeated DriverTripSummary trips = 1;
+  int32 total = 2;
+}
+
+message DriverTripSummary {
+  string trip_id = 1;
+  string status = 2;
+  double fare = 3;
+  string created_at = 4;
+}

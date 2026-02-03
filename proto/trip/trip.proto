@@ -1,0 +1,82 @@
+syntax = "proto3";
+
+package trip;
+
+option go_package = "github.com/taxxy/shared/proto/trip";
+
+import "proto/shared/shared.proto";
+
+service TripService {
+  rpc CreateTrip(CreateTripRequest) returns (CreateTripResponse);
+  rpc GetTrip(GetTripRequest) returns (TripDetails);
+  rpc AssignDriver(AssignDriverRequest) returns (AssignDriverResponse);
+  rpc UpdateTripStatus(UpdateTripStatusRequest)
+      returns (UpdateTripStatusResponse);
+  rpc ListTrips(ListTripsRequest) returns (ListTripsResponse);
+}
+
+message CreateTripRequest {
+  string rider_id = 1;
+  shared.Location pickup = 2;
+  shared.Location dropoff = 3;
+  string vehicle_type = 4;
+  double estimated_fare = 5;
+}
+
+message CreateTripResponse {
+  string trip_id = 1;
+  double estimated_fare = 2;
+  string status = 3;
+}
+
+message GetTripRequest { string trip_id = 1; }
+
+message TripDetails {
+  string trip_id = 1;
+  string rider_id = 2;
+  string driver_id = 3;
+  string status = 4;
+  shared.Location pickup = 5;
+  shared.Location dropoff = 6;
+  double estimated_fare = 7;
+  double final_fare = 8;
+  double distance_km = 9;
+  int64 duration_sec = 10;
+  string created_at = 11;
+  string updated_at = 12;
+  string vehicle_type = 13;
+}
+
+message AssignDriverRequest {
+  string trip_id = 1;
+  string driver_id = 2;
+}
+
+message AssignDriverResponse {
+  string trip_id = 1;
+  string status = 2;
+}
+
+message UpdateTripStatusRequest {
+  string trip_id = 1;
+  string status = 2;
+}
+
+message UpdateTripStatusResponse {
+  string trip_id = 1;
+  string status = 2;
+  double final_fare = 3;
+}
+
+message ListTripsRequest {
+  string rider_id = 1;
+  string driver_id = 2;
+  string status = 3;
+  int32 limit = 4;
+  int32 offset = 5;
+}
+
+message ListTripsResponse {
+  repeated TripDetails trips = 1;
+  int32 total = 2;
+}

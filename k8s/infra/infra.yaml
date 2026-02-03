@@ -1,0 +1,258 @@
+# ─── RabbitMQ ─────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rabbitmq
+  namespace: taxxy
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: rabbitmq }
+  template:
+    metadata:
+      labels: { app: rabbitmq }
+    spec:
+      containers:
+        - name: rabbitmq
+          image: rabbitmq:3-management-alpine
+          ports:
+            - { containerPort: 5672, name: amqp }
+            - { containerPort: 15672, name: mgmt }
+          env:
+            - { name: RABBITMQ_DEFAULT_USER, value: guest }
+            - { name: RABBITMQ_DEFAULT_PASS, value: guest }
+          volumeMounts:
+            - { name: rabbitmq-data, mountPath: /var/lib/rabbitmq }
+      volumes:
+        - name: rabbitmq-data
+          emptyDir: {}   # Use a PVC in production
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rabbitmq
+  namespace: taxxy
+spec:
+  selector: { app: rabbitmq }
+  ports:
+    - { name: amqp, port: 5672, targetPort: amqp }
+    - { name: mgmt,  port: 15672, targetPort: mgmt }
+
+# ─── Postgres Helper Template ─────────────────────────────────
+# Each Postgres instance follows the same pattern.
+# We use StatefulSet + PVC for durable storage.
+
+---
+# ── Auth DB ──────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres-auth
+  namespace: taxxy
+spec:
+  serviceName: postgres-auth
+  replicas: 1
+  selector:
+    matchLabels: { app: postgres-auth }
+  template:
+    metadata:
+      labels: { app: postgres-auth }
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          ports: [{ containerPort: 5432 }]
+          env:
+            - { name: POSTGRES_USER,     value: taxxy_auth }
+            - { name: POSTGRES_PASSWORD, value: password }
+            - { name: POSTGRES_DB,       value: taxxy_auth }
+          volumeMounts:
+            - { name: pgdata, mountPath: /var/lib/postgresql/data }
+  volumeClaimTemplates:
+    - metadata: { name: pgdata }
+      spec:
+        accessModes: [ReadWriteOnce]
+        resources:
+          requests: { storage: 2Gi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-auth
+  namespace: taxxy
+spec:
+  clusterIP: None  # headless – required for StatefulSet DNS
+  selector: { app: postgres-auth }
+  ports: [{ port: 5432 }]
+
+---
+# ── Rider DB ─────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres-rider
+  namespace: taxxy
+spec:
+  serviceName: postgres-rider
+  replicas: 1
+  selector:
+    matchLabels: { app: postgres-rider }
+  template:
+    metadata:
+      labels: { app: postgres-rider }
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          ports: [{ containerPort: 5432 }]
+          env:
+            - { name: POSTGRES_USER,     value: taxxy_rider }
+            - { name: POSTGRES_PASSWORD, value: password }
+            - { name: POSTGRES_DB,       value: taxxy_rider }
+          volumeMounts:
+            - { name: pgdata, mountPath: /var/lib/postgresql/data }
+  volumeClaimTemplates:
+    - metadata: { name: pgdata }
+      spec:
+        accessModes: [ReadWriteOnce]
+        resources:
+          requests: { storage: 2Gi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-rider
+  namespace: taxxy
+spec:
+  clusterIP: None
+  selector: { app: postgres-rider }
+  ports: [{ port: 5432 }]
+
+---
+# ── Trip DB ──────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres-trip
+  namespace: taxxy
+spec:
+  serviceName: postgres-trip
+  replicas: 1
+  selector:
+    matchLabels: { app: postgres-trip }
+  template:
+    metadata:
+      labels: { app: postgres-trip }
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          ports: [{ containerPort: 5432 }]
+          env:
+            - { name: POSTGRES_USER,     value: taxxy_trip }
+            - { name: POSTGRES_PASSWORD, value: password }
+            - { name: POSTGRES_DB,       value: taxxy_trip }
+          volumeMounts:
+            - { name: pgdata, mountPath: /var/lib/postgresql/data }
+  volumeClaimTemplates:
+    - metadata: { name: pgdata }
+      spec:
+        accessModes: [ReadWriteOnce]
+        resources:
+          requests: { storage: 2Gi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-trip
+  namespace: taxxy
+spec:
+  clusterIP: None
+  selector: { app: postgres-trip }
+  ports: [{ port: 5432 }]
+
+---
+# ── Driver DB ────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres-driver
+  namespace: taxxy
+spec:
+  serviceName: postgres-driver
+  replicas: 1
+  selector:
+    matchLabels: { app: postgres-driver }
+  template:
+    metadata:
+      labels: { app: postgres-driver }
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          ports: [{ containerPort: 5432 }]
+          env:
+            - { name: POSTGRES_USER,     value: taxxy_driver }
+            - { name: POSTGRES_PASSWORD, value: password }
+            - { name: POSTGRES_DB,       value: taxxy_driver }
+          volumeMounts:
+            - { name: pgdata, mountPath: /var/lib/postgresql/data }
+  volumeClaimTemplates:
+    - metadata: { name: pgdata }
+      spec:
+        accessModes: [ReadWriteOnce]
+        resources:
+          requests: { storage: 2Gi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-driver
+  namespace: taxxy
+spec:
+  clusterIP: None
+  selector: { app: postgres-driver }
+  ports: [{ port: 5432 }]
+
+---
+# ── Payment DB ───────────────────────────────────────────────
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres-payment
+  namespace: taxxy
+spec:
+  serviceName: postgres-payment
+  replicas: 1
+  selector:
+    matchLabels: { app: postgres-payment }
+  template:
+    metadata:
+      labels: { app: postgres-payment }
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          ports: [{ containerPort: 5432 }]
+          env:
+            - { name: POSTGRES_USER,     value: taxxy_payment }
+            - { name: POSTGRES_PASSWORD, value: password }
+            - { name: POSTGRES_DB,       value: taxxy_payment }
+          volumeMounts:
+            - { name: pgdata, mountPath: /var/lib/postgresql/data }
+  volumeClaimTemplates:
+    - metadata: { name: pgdata }
+      spec:
+        accessModes: [ReadWriteOnce]
+        resources:
+          requests: { storage: 2Gi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-payment
+  namespace: taxxy
+spec:
+  clusterIP: None
+  selector: { app: postgres-payment }
+  ports: [{ port: 5432 }]

@@ -1,0 +1,10 @@
+syntax = "proto3";
+
+package shared;
+
+option go_package = "github.com/taxxy/shared/proto/shared";
+
+message Location {
+  double latitude = 1;
+  double longitude = 2;
+}

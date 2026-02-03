@@ -1,0 +1,205 @@
+# docker-compose.yml
+# Run:  docker compose up --build
+#
+# Ports exposed to host:
+#   8080  – API Gateway  (React frontend proxies here)
+#   5672  – RabbitMQ AMQP
+#   15672 – RabbitMQ Management UI  (guest/guest)
+#   5432* – each postgres on a different host port (5432-5437)
+
+version: "3.9"
+
+# ─── Shared network ──────────────────────────────────────────
+networks:
+  taxxy-net:
+    driver: bridge
+
+# ─── Volumes (named, so data persists across restarts) ──────
+volumes:
+  pg-auth-data:
+  pg-rider-data:
+  pg-driver-data:
+  pg-trip-data:
+  pg-payment-data:
+  rabbitmq-data:
+
+# ─────────────────────────────────────────────────────────────
+# INFRASTRUCTURE
+# ─────────────────────────────────────────────────────────────
+
+services:
+  # ── RabbitMQ ─────────────────────────────────────────────
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    networks: [taxxy-net]
+    ports:
+      - "5672:5672"    # AMQP
+      - "15672:15672"  # Management UI
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+
+  # ── Postgres – Auth ──────────────────────────────────────
+  postgres-auth:
+    image: postgres:16-alpine
+    networks: [taxxy-net]
+    ports: ["5432:5432"]
+    volumes: [pg-auth-data:/var/lib/postgresql/data]
+    environment:
+      POSTGRES_USER:     taxxy_auth
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB:       taxxy_auth
+
+  # ── Postgres – Rider ─────────────────────────────────────
+  postgres-rider:
+    image: postgres:16-alpine
+    networks: [taxxy-net]
+    ports: ["5433:5432"]
+    volumes: [pg-rider-data:/var/lib/postgresql/data]
+    environment:
+      POSTGRES_USER:     taxxy_rider
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB:       taxxy_rider
+
+  # ── Postgres – Trip ──────────────────────────────────────
+  postgres-trip:
+    image: postgres:16-alpine
+    networks: [taxxy-net]
+    ports: ["5434:5432"]
+    volumes: [pg-trip-data:/var/lib/postgresql/data]
+    environment:
+      POSTGRES_USER:     taxxy_trip
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB:       taxxy_trip
+
+  # ── Postgres – Driver ────────────────────────────────────
+  postgres-driver:
+    image: postgres:16-alpine
+    networks: [taxxy-net]
+    ports: ["5435:5432"]
+    volumes: [pg-driver-data:/var/lib/postgresql/data]
+    environment:
+      POSTGRES_USER:     taxxy_driver
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB:       taxxy_driver
+
+  # ── Postgres – Payment ───────────────────────────────────
+  postgres-payment:
+    image: postgres:16-alpine
+    networks: [taxxy-net]
+    ports: ["5436:5432"]
+    volumes:
+      - pg-payment-data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_USER:     taxxy_payment
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB:       taxxy_payment
+
+# ─────────────────────────────────────────────────────────────
+# MICROSERVICES
+# ─────────────────────────────────────────────────────────────
+
+  # ── API Gateway ──────────────────────────────────────────
+  api-gateway:
+    build:
+      context: .
+      dockerfile: services/api-gateway/Dockerfile
+    networks: [taxxy-net]
+    ports: ["8080:8080"]
+    environment:
+      HTTP_PORT:              "8080"
+      AUTH_SERVICE_URL:       "auth-service:50051"
+      RIDER_SERVICE_URL:      "rider-service:50052"
+      TRIP_SERVICE_URL:       "trip-service:50053"
+      DRIVER_SERVICE_URL:     "driver-service:50054"
+      PAYMENT_SERVICE_URL:    "payment-service:50055"
+    depends_on: [auth-service, rider-service, driver-service, trip-service, payment-service]
+
+  # ── Auth Service ─────────────────────────────────────────
+  auth-service:
+    build:
+      context: .
+      dockerfile: services/auth-service/Dockerfile
+    networks: [taxxy-net]
+    environment:
+      GRPC_PORT:        "50051"
+      DB_HOST:          postgres-auth
+      DB_PORT:          "5432"
+      DB_USER:          taxxy_auth
+      DB_PASSWORD:      password
+      DB_NAME:          taxxy_auth
+      DB_SSLMODE:       disable
+      JWT_SECRET:       taxxy-dev-secret-change-in-prod
+      JWT_EXPIRY_HOURS: "24"
+    depends_on: [postgres-auth]
+
+  # ── Rider Service ────────────────────────────────────────
+  rider-service:
+    build:
+      context: .
+      dockerfile: services/rider-service/Dockerfile
+    networks: [taxxy-net]
+    environment:
+      GRPC_PORT:         "50052"
+      DB_HOST:           postgres-rider
+      DB_PORT:           "5432"
+      DB_USER:           taxxy_rider
+      DB_PASSWORD:       password
+      DB_NAME:           taxxy_rider
+      DB_SSLMODE:        disable
+      TRIP_SERVICE_URL:  trip-service:50053
+    depends_on: [postgres-rider, trip-service]
+
+  # ── Trip Service ─────────────────────────────────────────
+  trip-service:
+    build:
+      context: .
+      dockerfile: services/trip-service/Dockerfile
+    networks: [taxxy-net]
+    environment:
+      GRPC_PORT:    "50053"
+      DB_HOST:      postgres-trip
+      DB_PORT:      "5432"
+      DB_USER:      taxxy_trip
+      DB_PASSWORD:  password
+      DB_NAME:      taxxy_trip
+      DB_SSLMODE:   disable
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
+    depends_on: [postgres-trip, rabbitmq]
+
+  # ── Driver Service ───────────────────────────────────────
+  driver-service:
+    build:
+      context: .
+      dockerfile: services/driver-service/Dockerfile
+    networks: [taxxy-net]
+    environment:
+      GRPC_PORT:          "50054"
+      DB_HOST:            postgres-driver
+      DB_PORT:            "5432"
+      DB_USER:            taxxy_driver
+      DB_PASSWORD:        password
+      DB_NAME:            taxxy_driver
+      DB_SSLMODE:         disable
+      RABBITMQ_URL:       amqp://guest:guest@rabbitmq:5672/
+      TRIP_SERVICE_URL:   trip-service:50053
+    depends_on: [postgres-driver, rabbitmq, trip-service]
+
+  # ── Payment Service ──────────────────────────────────────
+  payment-service:
+    build:
+      context: .
+      dockerfile: services/payment-service/Dockerfile
+    networks: [taxxy-net]
+    environment:
+      GRPC_PORT:    "50055"
+      DB_HOST:      postgres-payment
+      DB_PORT:      "5432"
+      DB_USER:      taxxy_payment
+      DB_PASSWORD:  password
+      DB_NAME:      taxxy_payment
+      DB_SSLMODE:   disable
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
+    depends_on: [postgres-payment, rabbitmq]
